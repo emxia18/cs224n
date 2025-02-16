@@ -73,7 +73,9 @@ elif args.variant == 'rope':
     # TODO: [part g] Make some other model here
     # set mconf.rope parameter
     ### YOUR CODE HERE ###
-    pass
+    mconf.rope = True    
+    model = models.GPT(mconf)
+    model = model.to(device)
     ### END YOUR CODE ###
 else:
     raise ValueError("Unknown model variant")
@@ -103,7 +105,20 @@ if args.function == 'pretrain':
     # writer=writer
 
     ### YOUR CODE HERE ###
-    pass
+    tconf = trainer.TrainerConfig(
+        max_epochs=650,
+        batch_size=128,
+        learning_rate=args.pretrain_lr,
+        lr_decay=True,
+        warmup_tokens=512*20,
+        final_tokens=650*len(pretrain_dataset)*block_size,
+        num_workers=4,
+        writer=writer
+    )
+
+    trainer = trainer.Trainer(model, pretrain_dataset, None, tconf)
+    trainer.train()
+    torch.save(model.state_dict(), args.writing_params_path)
     ### END YOUR CODE ###
 elif args.function == 'finetune':
     assert args.writing_params_path is not None
@@ -142,13 +157,36 @@ elif args.function == 'finetune':
     #     number of epochs for each case.
 
     ### YOUR CODE HERE ###
-    finetune_text = open(args.finetune_corpus_path, encoding='utf-8').read()
-    finetune_dataset = dataset.CharCorruptionDataset(finetune_text, block_size)
+    if args.reading_params_path is not None:
+        model.load_state_dict(torch.load(args.reading_params_path))
+        tconf = trainer.TrainerConfig(
+            max_epochs=10,
+            batch_size=256,
+            learning_rate=args.finetune_lr,
+            lr_decay=True,
+            warmup_tokens=512*20,
+            final_tokens=200*len(pretrain_dataset)*block_size,
+            num_workers=4,
+            writer=writer
+        )
+    else:
+        tconf = trainer.TrainerConfig(
+            max_epochs=75,
+            batch_size=256,
+            learning_rate=args.finetune_lr,
+            lr_decay=True,
+            warmup_tokens=512*20,
+            final_tokens=200*len(pretrain_dataset)*block_size,
+            num_workers=4,
+            writer=writer
+        )
+    
+    finetune_text = open(args.finetune_corpus_path).read()
+    finetune_dataset = dataset.NameDataset(pretrain_dataset, finetune_text)
 
-    tconf = trainer.TrainerConfig(max_epochs=2, batch_size=512, learning_rate=6e-4,
-                      lr_decay=True, warmup_tokens=512*20, final_tokens=2*len(finetune_dataset)*block_size,
-                      num_workers=4)
-    trainer.Trainer(model, finetune_dataset, None, tconf).train()
+    trainer = trainer.Trainer(model, finetune_dataset, None, tconf)
+    trainer.train()
+
     torch.save(model.state_dict(), args.writing_params_path)
     ### END YOUR CODE ###
 elif args.function == 'evaluate':
@@ -170,6 +208,7 @@ elif args.function == 'evaluate':
             pred = completion.split('⁇')[1]
             predictions.append(pred)
             fout.write(pred + '\n')
+        print(args.eval_corpus_path)
         total, correct = utils.evaluate_places(args.eval_corpus_path, predictions)
     if total > 0:
         print(f'Correct: {correct} out of {total}: {correct/total*100}%')

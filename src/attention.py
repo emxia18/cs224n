@@ -38,7 +38,15 @@ def precompute_rotary_emb(dim, max_positions):
     rope_cache = None
     # TODO: [part g]
     ### YOUR CODE HERE ###
-    pass
+    theta = 10000.0 ** (-2.0 * torch.arange(dim // 2, dtype=torch.float32) / dim)
+    positions = torch.arange(max_positions, dtype=torch.float32).unsqueeze(1)
+
+    angles = positions * theta.unsqueeze(0)
+
+    cos_vals = torch.cos(angles)
+    sin_vals = torch.sin(angles)
+
+    rope_cache = torch.stack((cos_vals, sin_vals), dim=-1)
     ### END YOUR CODE ###
     return rope_cache
 
@@ -58,7 +66,17 @@ def apply_rotary_emb(x, rope_cache):
 
     rotated_x = None
     ### YOUR CODE HERE ###
-    pass
+    batch_size, num_heads, seq_len, dim = x.shape
+    half_dim = dim // 2
+
+    if seq_len < rope_cache.shape[0]:
+        rope_cache = rope_cache[:seq_len]  
+    
+    rope_complex = torch.view_as_complex(rope_cache.view(seq_len, half_dim, 2))
+    x_complex = torch.view_as_complex(x.reshape(batch_size, num_heads, seq_len, half_dim, 2))
+    rotated_complex_x = x_complex * rope_complex.unsqueeze(0)
+    rotated_x = torch.view_as_real(rotated_complex_x).reshape(batch_size, num_heads, seq_len, dim)
+
     ### END YOUR CODE ###
     return rotated_x
 
@@ -86,7 +104,7 @@ class CausalSelfAttention(nn.Module):
             # Hint: The maximum sequence length is given by config.block_size.
             rope_cache = None
             ### YOUR CODE HERE ###
-            pass
+            rope_cache = precompute_rotary_emb(config.n_embd // config.n_head, config.block_size)
             ### END YOUR CODE ###
 
             self.register_buffer("rope_cache", rope_cache)
@@ -112,7 +130,8 @@ class CausalSelfAttention(nn.Module):
         if self.rope:
             # TODO: [part g] Apply RoPE to the query and key.
             ### YOUR CODE HERE ###
-            pass
+            q = apply_rotary_emb(q, self.rope_cache)
+            k = apply_rotary_emb(k, self.rope_cache)
             ### END YOUR CODE ###
 
         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)

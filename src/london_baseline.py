@@ -12,6 +12,8 @@ def main():
 
     # Compute accuracy in the range [0.0, 100.0]
     ### YOUR CODE HERE ###
+
+    EVAL_CORPUS_PATH = "birth_dev.tsv"
     
     predictions = ["London"] * NUM_PREDS
     total, correct = utils.evaluate_places(EVAL_CORPUS_PATH, predictions)
